@@ -1,6 +1,7 @@
 from fastapi import FastAPI, UploadFile, Header
 from pydantic import BaseModel
 
+from pathlib import Path
 import requests
 import pandas as pd
 from espo_api_client import EspoAPI
@@ -22,9 +23,10 @@ class Kobo(BaseModel):
     class Config:
         fields = {'id':'_id'}
 
+class Upload(BaseModel):
+    forceOverwrite: str
 
 app = FastAPI()
-
 path = 'C:/Users/TZiere/Git/kobo2espoAPI'
 
 def get_kobo_data_id(ASSET,ID,TOKEN):
@@ -36,25 +38,38 @@ def get_kobo_data_id(ASSET,ID,TOKEN):
     data = data_request.json()['results'][0]
     return data
 
-@app.post("/kobo/uploadcsv")
-async def create_upload_file(mappingcsv: UploadFile):
-    with open(mappingcsv.filename, "wb") as buffer:
-        shutil.copyfileobj(mappingcsv.file, buffer)
+@app.post("/kobo/{assetid}/uploadcsv")
+async def create_upload_file(mappingcsv:UploadFile, assetid:str, overwrite:Upload | None = None):
+    path = f'data/{assetid}/mapping.csv'
+    isExist = os.path.isfile(path)
+    print(overwrite)
+    print(type(overwrite))
+    if overwrite != None:
+        print('test')
+        overwrite = dict(overwrite)['overwrite']
+    
+    if (overwrite == None or overwrite == 'false'):    
+        if (isExist == True):
+            return f"file already exists, please use overwrite=true in your request body if you want to overwrite the existing file OR use a GET request on /kobo/{assetid}/mappingcsv to view current file"
+    else:
+        Path(f"data/{assetid}").mkdir(parents=True, exist_ok=True)
+        fileLocation = f"data/{assetid}/mapping.csv"
+        with open(fileLocation, "wb") as buffer:
+            shutil.copyfileobj(mappingcsv.file, buffer)
 
-    return {"Result": "OK", "filename": mappingcsv.filename}
-    print(kobo)
-    kobo = dict(kobo)
-    print(kobo)
-    koboid = kobo['id']
-    print(koboid)
-    return {
-        "HeaderTest": kobotoken,
-        "MappingFile": mappingfile,
-        "koboId": koboid,
-        "assetid": assetid
-        }
+        return {"Result": "OK",
+                "filename": "mapping.csv",
+                "assetid": assetid}
+    print(overwrite)
 
-@app.post("/kobo/gdrive/{assetid}")
+@app.get("/kobo/{assetid}/mappingcsv")
+async def create_upload_file(assetid:str):
+    path = f'/data/{assetid}/mapping.csv'
+    mappingcsv = pd.read_csv(path)
+    return {mappingcsv}
+
+
+@app.post("/kobo/{assetid}/gdrive")
 async def kobo(assetid: str, kobo:KoboDrive, kobotoken: str = Header(default=None)):
     kobo = dict(kobo)
     url = kobo['gdriveurl']
@@ -92,7 +107,7 @@ async def kobo(assetid: str, kobo:KoboDrive, kobotoken: str = Header(default=Non
     return payload
 
 @app.post("/kobo/{assetid}")
-async def kobo(assetid: str, kobo:Kobo, kobotoken: str = Header(default=None), mappingfile: str = Header(default=None)):
+async def kobo(assetid: str, kobo:Kobo, kobotoken: str = Header(default=None)):
     kobo = dict(kobo)
     koboid = kobo['id']
     # Get latest KoBo Submission
@@ -103,6 +118,7 @@ async def kobo(assetid: str, kobo:Kobo, kobotoken: str = Header(default=None), m
         df[new_key] = df.pop(key)
     
     # Create a dataframe to map the Kobo question names to the Espo Fieldnames, mapping csv should be publicly on google drive
+    mappingfile = f'/{assetid}/mapping.csv'
     mapping = pd.read_csv(mappingfile, header=0, index_col=0, squeeze=True)
 
     # Create API payload body
