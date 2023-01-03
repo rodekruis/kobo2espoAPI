@@ -31,6 +31,8 @@ class Kobo(BaseModel):
     class Config:
         fields = {'id':'_id'}
 
+class Upload(BaseModel):
+    forceOverwrite: str
 
 app = FastAPI()
 
@@ -55,12 +57,36 @@ async def create_project(projectname:str):
     except OSError as error: 
         raise HTTPException(status_code=422, detail="Project already exists")
 
-@app.post("/{projectname}/csv")
+@app.post("/{projectname}/csv/old")
 async def upload_csv_file(projectname: str, mappingcsv: UploadFile):
     path = os.path.join(dir, projectname)
     with open(mappingcsv.filename, "wb") as buffer:
         shutil.copyfileobj(f'{path}/{mappingcsv.file}', buffer)
     return {"Result": "OK", "filename": mappingcsv.filename}
+
+@app.post("/{projectname}/csv")
+async def create_upload_file(mappingcsv:UploadFile, projectname:str, overwrite:Upload | None = None):
+    #check if project exists
+
+    #check if upload file exists
+    path = os.path.join(dir, projectname)
+    path = f'{path}/mapping.csv'
+    isExist = os.path.isfile(path)
+    print(overwrite)
+    print(type(overwrite))
+    if overwrite != None:
+        overwrite = dict(overwrite)['overwrite']
+    
+    #if upload file exists and no overwrite is specified, throw error
+    if (overwrite == None or overwrite == 'false'):    
+        if (isExist == True):
+            return f"file already exists, please use overwrite=true in your request body if you want to overwrite the existing file OR use a GET request on /kobo/{assetid}/mappingcsv to view current file"
+    #else create upload file
+    else:
+        path = os.path.join(dir, projectname)
+        with open(mappingcsv.filename, "wb") as buffer:
+            shutil.copyfileobj(f'{path}/{mappingcsv.file}', buffer)
+        return {"Result": "OK", "filename": mappingcsv.filename}
 
 @app.get("{projectname}/csv")
 async def view_csv_file(projectname: str):
