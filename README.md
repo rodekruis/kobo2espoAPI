@@ -1,2 +1,2 @@
-# kobo2espoAPI
+**Deprecated** in favor of [KoboConnect](https://github.com/rodekruis/kobo-connect).
  
